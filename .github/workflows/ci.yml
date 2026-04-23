@@ -1,0 +1,58 @@
+#name of ci/cd pipeline, label
+name: AI Test Framework CI
+
+#this are the event when ci/cd will trigger when new code is push to main and pull reuqest
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+#list of things to do, runs on fresh Ubuntu Linux server on Githib cloud. Github spin everytime on new server
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+        # dowlownd code from github to ubuntu server
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # setup java 11 on ubuntu server
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+
+      - name: Run API Tests
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+        # this will run actual tests
+        run: mvn test -Dtest=BookingApiTest
+
+      - name: Publish Test Report
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: test-reports
+          path: target/surefire-reports/
+
+
+#
+
+  #You push code to GitHub
+  #↓
+  #GitHub detects push
+  #↓
+  #Spins up fresh Ubuntu server
+  #↓
+  #Downloads your code
+  #↓
+  #Installs Java 11
+  #↓
+  #Runs mvn test
+  #↓
+  #Uploads test reports
+  #↓
+  #Shows green ✅ or red ❌ on GitHub

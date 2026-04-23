@@ -24,6 +24,13 @@ public class ConfigReader {
     }
 
     public static String getClaudeApiKey() {
+        // this will check on github ubuntu server we are doing this so that gihub has acess to key as there is no access on github
+        // First check environment variable (for CI/CD)
+        String envKey = System.getenv("CLAUDE_API_KEY");
+        if (envKey != null && !envKey.isEmpty()) {
+            return envKey;
+        }
+        // Fall back to config.properties (for local development)
         return properties.getProperty("claude.api.key");
     }
 }
