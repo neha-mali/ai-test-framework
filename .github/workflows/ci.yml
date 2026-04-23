@@ -29,14 +29,14 @@ jobs:
         env:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
         # this will run actual tests
-        run: mvn test -Dtest=BookingApiTest
+        run: mvn test surefire-report:report -Dtest=BookingApiTest
 
       - name: Publish Test Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-reports
-          path: target/surefire-reports/
+          path: target/site/surefire-report.html
 
 
 #
