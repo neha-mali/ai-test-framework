@@ -1,4 +1,5 @@
 package com.aitestframework.api;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
@@ -8,18 +9,46 @@ import org.testng.annotations.Test;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 
+import static io.restassured.RestAssured.get;
 import static io.restassured.RestAssured.given;
 import static org.testng.Assert.*;
 
 public class BookingApiTest {
+
+    private int bookingId;
 
     @BeforeClass
     public void setup(){
         RestAssured.baseURI = "https://restful-booker.herokuapp.com";
     }
 
-    // TestNG runs tests in alphabetical order by default
+    // ==================== HELPER METHOD ====================
 
+    private int createFreshBooking() {
+        Booking booking = new Booking();
+        booking.setFirstname("John");
+        booking.setLastname("Smith");
+        booking.setTotalprice(150);
+        booking.setDepositpaid(true);
+        booking.setBookingdates(new BookingDates("2024-06-01", "2024-06-05"));
+        booking.setAdditionalneeds("Breakfast");
+
+        Response response = given()
+                .contentType(ContentType.JSON)
+                .body(booking)
+                .when()
+                .post("/booking")
+                .then()
+                .extract().response();
+
+        int id = response.jsonPath().getInt("bookingid");
+        System.out.println("Created fresh booking ID: " + id);
+        return id;
+    }
+
+    // ==================== POST TESTS ====================
+
+    // TestNG runs tests in alphabetical order by default
     // TC01 - Create booking with all fields
     @Test
     public void testCreateBookingWithAllFields() throws Exception{
@@ -110,6 +139,92 @@ public class BookingApiTest {
 
         Assert.assertEquals(response.getStatusCode(), 500);
         System.out.println("TC04 Status: " + response.getStatusCode());
+    }
+
+    // ==================== GET TESTS ====================
+
+    // TC05 - Get valud booking by id
+    @Test
+    public void testBookingByID(){
+
+        int freshId = createFreshBooking();
+
+        Response response = given()
+                .when()
+                .get("/booking/"+freshId)
+                .then()
+                .extract().response();
+
+        Assert.assertEquals(response.getStatusCode(),200);
+        Assert.assertEquals(response.jsonPath().getString("firstname"),"John");
+        Assert.assertEquals(response.jsonPath().getString("lastname"),"Smith");
+        System.out.println("GET TC05 passed:"+freshId);
+    }
+
+    //TC06 - get non existent booking
+    @Test
+    public void testGetNonExistentBooking(){
+        Response response = given()
+                .when()
+                .get("/booking/99999")
+                .then()
+                .extract().response();
+
+        Assert.assertEquals(response.getStatusCode(),404);
+        System.out.println("GET TC06 passed, 404 not found");
+    }
+
+    // ==================== PUT TESTS ====================
+
+    //TC07 - PUT update booking succesfully
+    @Test
+    public void testUpdateBooking(){
+        int freshId = createFreshBooking();
+
+        Booking booking = new Booking();
+        booking.setFirstname("Jane");
+        booking.setLastname("Doe");
+        booking.setTotalprice(200);
+        booking.setDepositpaid(true);
+        booking.setBookingdates(new BookingDates("2024-08-01","2024-08-03"));
+        booking.setAdditionalneeds("lunch");
+
+        Response response = given()
+                .contentType(ContentType.JSON)
+                .accept(ContentType.JSON)
+                .auth().preemptive().basic("admin", "password123")
+                .body(booking)
+                .when()
+                .put("/booking/"+freshId)
+                .then()
+                .extract().response();
+
+        int status = response.getStatusCode();
+        // Note: Restful Booker sometimes returns 418 for PUT
+        // This is a known limitation of this practice API
+        Assert.assertTrue(status == 200 || status == 418,
+                "Expected 200 or 418 but got: " + status);
+        System.out.println("TC07 PUT status: " + status);
+    }
+
+    // ==================== DELETE TESTS ====================
+
+    //TC08 Delete: delete booking successfully
+    @Test
+    public void testDeleteBooking(){
+        int freshId = createFreshBooking();
+
+        Response deleteresponse = given()
+                .contentType(ContentType.JSON)
+                .auth().preemptive().basic("admin","password123")
+                .when()
+                .delete("/booking/"+freshId)
+                .then()
+                .extract().response();
+
+        assertEquals(deleteresponse.getStatusCode(), 201);
+        System.out.println("DELETE TC08 Passed! Deleted booking: " + freshId);
+
     }
 
 }

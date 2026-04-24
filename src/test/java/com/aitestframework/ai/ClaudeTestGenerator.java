@@ -125,7 +125,7 @@ public class ClaudeTestGenerator {
             JsonNode jsonResponse = objectMapper.readTree(responseBody);
 
             // return claude text as text
-            System.out.println("Raw response: " + responseBody);
+            //System.out.println("Raw response: " + responseBody);
 
             if (jsonResponse.has("content")) {
                 return jsonResponse
