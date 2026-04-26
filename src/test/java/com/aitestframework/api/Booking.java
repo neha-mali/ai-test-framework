@@ -2,6 +2,8 @@ package com.aitestframework.api;
 
 public class Booking {
 
+    // blur print on how each booking should look like
+
     private String firstname;
     private String lastname;
     private int totalprice;

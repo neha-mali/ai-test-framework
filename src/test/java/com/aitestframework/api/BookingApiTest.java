@@ -1,40 +1,38 @@
 package com.aitestframework.api;
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import io.restassured.RestAssured;
-import io.restassured.http.ContentType;
+import com.aitestframework.utils.RetryAnalyzer;
 import io.restassured.response.Response;
-import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
+import com.aitestframework.utils.Constants;
+import com.aitestframework.base.BaseTest;
+import com.aitestframework.utils.RetryAnalyzer;
+import io.qameta.allure.*;
 import org.testng.annotations.Test;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-
-import static io.restassured.RestAssured.get;
+import com.aitestframework.builders.BookingRequestBuilder;
+import com.aitestframework.validators.BookingResponseValidator;
 import static io.restassured.RestAssured.given;
-import static org.testng.Assert.*;
 
-public class BookingApiTest {
+@Epic("Restful Booker API") // allure project name top level
+@Feature("Booking Management") // allure second level
+public class BookingApiTest extends BaseTest {
 
-    private int bookingId;
-
-    @BeforeClass
-    public void setup(){
-        RestAssured.baseURI = "https://restful-booker.herokuapp.com";
-    }
 
     // ==================== HELPER METHOD ====================
+    // only one thread can execute this method at a time
+    // as we are running 3 methods in parallel
+    /*
+    Thread 1: createFreshBooking() starts
+    Thread 2: createFreshBooking() starts  ← at same time!
+    Thread 3: createFreshBooking() starts  ← at same time!
 
-    private int createFreshBooking() {
-        Booking booking = new Booking();
-        booking.setFirstname("John");
-        booking.setLastname("Smith");
-        booking.setTotalprice(150);
-        booking.setDepositpaid(true);
-        booking.setBookingdates(new BookingDates("2024-06-01", "2024-06-05"));
-        booking.setAdditionalneeds("Breakfast");
+    All 3 hit API simultaneously
+    API gets confused
+    Returns wrong booking IDs
+    Tests fail unpredictably!
+     */
+    private synchronized int createFreshBooking() {
+        Booking booking = new BookingRequestBuilder().build();
 
         Response response = given()
-                .contentType(ContentType.JSON)
+                .spec(requestSpec)
                 .body(booking)
                 .when()
                 .post("/booking")
@@ -50,69 +48,61 @@ public class BookingApiTest {
 
     // TestNG runs tests in alphabetical order by default
     // TC01 - Create booking with all fields
+    // if we know which we want to retry we can add in this way
+    //@Test(retryAnalyzer = RetryAnalyzer.class)
     @Test
+    @Story("Create Booking")
+    @Description("Create a booking with all valid fields")
+    @Severity(SeverityLevel.CRITICAL)
     public void testCreateBookingWithAllFields() throws Exception{
-        Booking booking = new Booking();
-        booking.setFirstname("john");
-        booking.setLastname("smith");
-        booking.setTotalprice(150);
-        booking.setDepositpaid(true);
-        booking.setBookingdates(new BookingDates("2024-06-01","2024-06-05"));
-        booking.setAdditionalneeds("breakfast");
-
-        // Add this to see what JSON is being sent
-        ObjectMapper mapper = new ObjectMapper();
-        System.out.println("Request body: " +
-                mapper.writeValueAsString(booking));
+        Booking booking = new BookingRequestBuilder().build();
 
         Response response = given()
-                .contentType(ContentType.JSON)
-                .body(booking)
+                .spec(requestSpec)
+                .body(booking) // here RestAssured uses Jackson internally to convert to string
                 .when()
                 .post("/booking")
                 .then()
                 .extract().response();
 
-        Assert.assertEquals(response.getStatusCode(),200);
-        Assert.assertNotNull(response.jsonPath().get("bookingid"));
-        Assert.assertTrue(response.jsonPath().getInt("bookingid")>0);
-        System.out.println("TC01 passed! Booking id:" +response.jsonPath().getInt("bookingid"));
+        BookingResponseValidator.validateBookingCreated(response);
+        System.out.println("TC01 passed!");
     }
 
     //TC02 create booking without optional field
     @Test
+    @Story("Create Booking")
+    @Description("Create booking without optional additionalneeds field")
+    @Severity(SeverityLevel.NORMAL)
     public void testCreateBookingWithoutOptionalField(){
-        Booking booking = new Booking();
-        booking.setFirstname("jane");
-        booking.setLastname("doe");
-        booking.setTotalprice(100);
-        booking.setDepositpaid(false);
-        booking.setBookingdates(new BookingDates("2024-07-01","2024-07-05"));
+        Booking booking = new BookingRequestBuilder()
+                .withAdditionalneeds(null)
+                .build();
 
         Response response = given()
-                .contentType(ContentType.JSON)
+                .spec(requestSpec)
                 .body(booking)
                 .when()
                 .post("/booking")
                 .then()
                 .extract().response();
 
-        Assert.assertEquals(response.getStatusCode(),200);
-        Assert.assertTrue(response.jsonPath().getInt("bookingid")>0);
-        System.out.println("TC02 passed! Booking id:" +response.jsonPath().getInt("bookingid"));
+        BookingResponseValidator.validateBookingCreated(response);
+        System.out.println("TC02 passed!");
     }
 
     //TC03 create booking with missing firstname
     @Test
+    @Story("Create Booking")
+    @Description("Create booking with missing required firstname field")
+    @Severity(SeverityLevel.NORMAL)
     public void testCreateBookingMissingFirstName(){
-        Booking booking = new Booking();
-        booking.setLastname("doe");
-        booking.setTotalprice(100);
-        booking.setDepositpaid(false);
-        booking.setBookingdates(new BookingDates("2024-07-01","2024-07-05"));
+        Booking booking = new BookingRequestBuilder()
+                .withFirstname(null)
+                .build();
 
         Response response = given()
-                .contentType(ContentType.JSON)
+                .spec(requestSpec)
                 .body(booking)
                 .when()
                 .post("/booking")
@@ -121,56 +111,64 @@ public class BookingApiTest {
 
         // Note: Restful Booker returns 500 instead of 400 for invalid requests
         // This is a known limitation of this practice API
-        int statusCode = response.getStatusCode();
-        Assert.assertTrue(statusCode == 400 || statusCode == 500, "Expected 400 or 500 but got this"+statusCode);
-        System.out.println("TC03 status:" +statusCode);
+        BookingResponseValidator.validateErrorResponse(response);
+        System.out.println("TC03 passed");
     }
 
     // TC04 - Empty Request Body
     @Test
+    @Story("Create Booking")
+    @Description("Create booking with empty request body")
+    @Severity(SeverityLevel.MINOR)
     public void testEmptyRequestBody() {
         Response response = given()
-                .contentType(ContentType.JSON)
+                .spec(requestSpec)
                 .body("{}")
                 .when()
                 .post("/booking")
                 .then()
                 .extract().response();
 
-        Assert.assertEquals(response.getStatusCode(), 500);
+        BookingResponseValidator.validateErrorResponse(response);
         System.out.println("TC04 Status: " + response.getStatusCode());
     }
 
     // ==================== GET TESTS ====================
 
-    // TC05 - Get valud booking by id
+    // TC05 - Get valid booking by id
     @Test
+    @Story("Create Booking")
+    @Description("Create booking with empty request body")
+    @Severity(SeverityLevel.MINOR)
     public void testBookingByID(){
 
         int freshId = createFreshBooking();
 
         Response response = given()
+                .spec(requestSpec)
                 .when()
                 .get("/booking/"+freshId)
                 .then()
                 .extract().response();
 
-        Assert.assertEquals(response.getStatusCode(),200);
-        Assert.assertEquals(response.jsonPath().getString("firstname"),"John");
-        Assert.assertEquals(response.jsonPath().getString("lastname"),"Smith");
-        System.out.println("GET TC05 passed:"+freshId);
+        BookingResponseValidator.validateBookingDetails(response,"John","Smith");
+        System.out.println("GET TC05 passed");
     }
 
     //TC06 - get non existent booking
     @Test
+    @Story("Get Booking")
+    @Description("Get booking with non existent ID returns 404")
+    @Severity(SeverityLevel.NORMAL)
     public void testGetNonExistentBooking(){
         Response response = given()
+                .spec(requestSpec)
                 .when()
                 .get("/booking/99999")
                 .then()
                 .extract().response();
 
-        Assert.assertEquals(response.getStatusCode(),404);
+        BookingResponseValidator.validateNotFound(response);
         System.out.println("GET TC06 passed, 404 not found");
     }
 
@@ -178,51 +176,53 @@ public class BookingApiTest {
 
     //TC07 - PUT update booking succesfully
     @Test
+    @Story("Update Booking")
+    @Description("Update booking successfully with valid credentials")
+    @Severity(SeverityLevel.CRITICAL)
     public void testUpdateBooking(){
         int freshId = createFreshBooking();
 
-        Booking booking = new Booking();
-        booking.setFirstname("Jane");
-        booking.setLastname("Doe");
-        booking.setTotalprice(200);
-        booking.setDepositpaid(true);
-        booking.setBookingdates(new BookingDates("2024-08-01","2024-08-03"));
-        booking.setAdditionalneeds("lunch");
+        Booking booking = new BookingRequestBuilder()
+                .withFirstname("Jane")
+                .withLastname("Doe")
+                .withTotalprice(200)
+                .withAdditionalneeds("lunch")
+                .build();
 
         Response response = given()
-                .contentType(ContentType.JSON)
-                .accept(ContentType.JSON)
-                .auth().preemptive().basic("admin", "password123")
+                .spec(requestSpec)
+                .auth().preemptive().basic(Constants.ADMIN_USERNAME, Constants.ADMIN_PASSWORD)
                 .body(booking)
                 .when()
                 .put("/booking/"+freshId)
                 .then()
                 .extract().response();
 
-        int status = response.getStatusCode();
         // Note: Restful Booker sometimes returns 418 for PUT
         // This is a known limitation of this practice API
-        Assert.assertTrue(status == 200 || status == 418,
-                "Expected 200 or 418 but got: " + status);
-        System.out.println("TC07 PUT status: " + status);
+        BookingResponseValidator.validateBookingDetails(response, "Jane", "Doe");
+        System.out.println("TC07 PUT status");
     }
 
     // ==================== DELETE TESTS ====================
 
     //TC08 Delete: delete booking successfully
     @Test
+    @Story("Delete Booking")
+    @Description("Delete booking successfully with valid credentials")
+    @Severity(SeverityLevel.CRITICAL)
     public void testDeleteBooking(){
         int freshId = createFreshBooking();
 
-        Response deleteresponse = given()
-                .contentType(ContentType.JSON)
-                .auth().preemptive().basic("admin","password123")
+        Response response = given()
+                .spec(requestSpec)
+                .auth().preemptive().basic(Constants.ADMIN_USERNAME,Constants.ADMIN_PASSWORD)
                 .when()
                 .delete("/booking/"+freshId)
                 .then()
                 .extract().response();
 
-        assertEquals(deleteresponse.getStatusCode(), 201);
+        BookingResponseValidator.validateDeleted(response);
         System.out.println("DELETE TC08 Passed! Deleted booking: " + freshId);
 
     }
